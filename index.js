@@ -72,6 +72,8 @@ function isSubtreeDone(node) {
   );
 }
 
+function getReturnArguments(node) {}
+
 const rules = {
   'data-component': {
     meta: {
@@ -93,7 +95,29 @@ const rules = {
         ) ?? [/Provider$/];
 
       return {
+        ArrowFunctionExpression(node) {
+          if (
+            node.body.type === 'JSXElement' &&
+            !node.body.openingElement.attributes.find(
+              (a) => a.name?.name === 'data-component',
+            )
+          ) {
+            const fixNode = node.body.openingElement;
+            context.report({
+              node: fixNode,
+              message: `xxx is missing the data-component attribute for the top-level element.`,
+              fix: (fixer) =>
+                fixer.insertTextAfterRange(
+                  Boolean(fixNode.typeParameters)
+                    ? fixNode.typeParameters.range
+                    : fixNode.name.range,
+                  ` data-component="xxx"`,
+                ),
+            });
+          }
+        },
         Program(node) {
+          return;
           const componentNodes = node.body
             .map((child) => child?.declaration ?? child)
             .filter(
@@ -101,6 +125,21 @@ const rules = {
                 child.type === 'VariableDeclaration' ||
                 child.type === 'FunctionDeclaration',
             )
+            .filter((child) => {
+              let returns = 0;
+
+              traverseTree(
+                getReturnStatement(child),
+                visitorKeys,
+                (current) => {
+                  if (current.type === 'ReturnStatement') {
+                    returns++;
+                  }
+                },
+              );
+
+              return returns <= 1;
+            })
             .filter((child) => {
               let flag = false;
 
@@ -138,49 +177,51 @@ const rules = {
               return flag;
             });
 
-          const [componentNode] = componentNodes;
+          componentNodes.forEach((componentNode) => {
+            const componentName =
+              componentNode?.id?.name ??
+              componentNode?.declarations?.map(
+                (declaration) => declaration?.id?.name,
+              );
 
-          const componentName =
-            componentNode?.id?.name ??
-            componentNode?.declarations?.map(
-              (declaration) => declaration?.id?.name,
+            let fixNode = null;
+
+            traverseTree(
+              getReturnStatement(componentNode),
+              visitorKeys,
+              (current) => {
+                if (isSubtreeDone(current)) {
+                  throw DONE_WITH_SUBTREE;
+                } else if (isTreeDone(current, excludeComponentNames)) {
+                  fixNode = current.openingElement;
+
+                  throw DONE_WITH_TREE;
+                }
+              },
             );
 
-          let fixNode = null;
-
-          traverseTree(
-            getReturnStatement(componentNode),
-            visitorKeys,
-            (current) => {
-              if (isSubtreeDone(current)) {
-                throw DONE_WITH_SUBTREE;
-              } else if (isTreeDone(current, excludeComponentNames)) {
-                fixNode = current.openingElement;
-
-                throw DONE_WITH_TREE;
-              }
-            },
-          );
-
-          if (Boolean(componentName)) {
-            context.report({
-              node: fixNode,
-              message: `${
-                Array.isArray(componentName) ? componentName[0] : componentName
-              } is missing the data-component attribute for the top-level element.`,
-              fix: (fixer) =>
-                fixer.insertTextAfterRange(
-                  Boolean(fixNode.typeParameters)
-                    ? fixNode.typeParameters.range
-                    : fixNode.name.range,
-                  `\ndata-component="${
-                    Array.isArray(componentName)
-                      ? componentName[0]
-                      : componentName
-                  }"`,
-                ),
-            });
-          }
+            if (Boolean(componentName)) {
+              context.report({
+                node: fixNode,
+                message: `${
+                  Array.isArray(componentName)
+                    ? componentName[0]
+                    : componentName
+                } is missing the data-component attribute for the top-level element.`,
+                fix: (fixer) =>
+                  fixer.insertTextAfterRange(
+                    Boolean(fixNode.typeParameters)
+                      ? fixNode.typeParameters.range
+                      : fixNode.name.range,
+                    ` data-component="${
+                      Array.isArray(componentName)
+                        ? componentName[0]
+                        : componentName
+                    }"`,
+                  ),
+              });
+            }
+          });
         },
       };
     },

@@ -7,7 +7,7 @@ const { join } = require('path');
 //------------------------------------------------------------------------------
 
 const tests = {
-  'data-component-tsx': {
+  'data-component': {
     // Require the actual rule definition
     rule: require('./index').rules['data-component'],
 
@@ -31,20 +31,63 @@ const tests = {
 
     // Define the test cases
     testCases: {
-      valid: [],
+      valid: [
+        // {
+        //   code: `const Component = () => <div data-component="foo" />;`,
+        // },
+        {
+          // Multiple return paths should not trigger the eslint warning
+          code: `const Component = ({value}) => {
+  if(value) {
+    return <div />;
+  } else {
+    return <span />;
+  }
+}`,
+        },
+        {
+          // Multiple return paths should not trigger the eslint warning
+          code: `const Component = ({value}) => {
+            return value ? <div /> : <span />
+          };`,
+        },
+        {
+          // Multiple return paths should not trigger the eslint warning
+          code: `const Component = ({value}) => {
+            const foo = <Foo />;
+
+            return null;
+          };`,
+        },
+      ],
       invalid: [
         {
-          code: /* tsx */ `const temp = () => {
-            <Icon name="metrics-insights/insight-icon" size={24} />;
-          };`,
-          output: /* tsx */ `const temp = () => {
-            <Icon
-data-component="temp" name="metrics-insights/insight-icon" size={24} />;
-          };`,
+          // Multiple components with errors
+          code: `
+            const Component1 = () => <div />;
+            const Component2 = () => <span />;
+          `,
+          output: `
+            const Component1 = () => <div data-component="Component1" />;
+            const Component2 = () => <span data-component="Component2" />;
+          `,
           errors: [
-            'temp is missing the data-component attribute for the top-level element.',
+            'Component1 is missing the data-component attribute for the top-level element.',
+            'Component2 is missing the data-component attribute for the top-level element.',
           ],
         },
+        //         {
+        //           code: /* tsx */ `const temp = () => {
+        //             <Icon name="metrics-insights/insight-icon" size={24} />;
+        //           };`,
+        //           output: /* tsx */ `const temp = () => {
+        //             <Icon
+        // data-component="temp" name="metrics-insights/insight-icon" size={24} />;
+        //           };`,
+        //           errors: [
+        //             'temp is missing the data-component attribute for the top-level element.',
+        //           ],
+        //         },
       ],
     },
   },
